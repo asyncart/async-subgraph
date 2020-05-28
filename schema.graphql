@@ -1,4 +1,4 @@
 type Layer @entity {
   id: ID!
-  controlTokenValues: [Int] # array of values for the control tokens
+  controlTokenValues: [BigInt] # array of values for the control tokens
 }
