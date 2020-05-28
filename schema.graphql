@@ -1,4 +1,5 @@
-type Layer @entity {
+type Artwork @entity {
   id: ID!
+  isMaster: Boolean!
   controlTokenValues: [BigInt] # array of values for the control tokens
 }
