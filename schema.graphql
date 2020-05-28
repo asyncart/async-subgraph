@@ -1,6 +1,4 @@
-type ExampleEntity @entity {
+type Layer @entity {
   id: ID!
-  count: BigInt!
-  owner: Bytes! # address
-  approved: Bytes! # address
+  controlTokenValues: [Int] # array of values for the control tokens
 }
