@@ -1,4 +1,4 @@
-import { BigInt } from "@graphprotocol/graph-ts"
+import { BigInt, log, Bytes } from "@graphprotocol/graph-ts";
 import {
   Contract,
   Approval,
@@ -10,90 +10,175 @@ import {
   PlatformAddressUpdated,
   RoyaltyAmountUpdated,
   TokenSale,
-  Transfer
-} from "../generated/Contract/Contract"
-import { ExampleEntity } from "../generated/schema"
+  Transfer,
+  MintArtworkCall,
+  SetupControlTokenCall,
+} from "../generated/Contract/Contract";
+import {
+  Platform,
+  Account,
+  SaleLog,
+  BidLog,
+  TransferLog,
+  Master,
+  Layer,
+  Lever,
+} from "../generated/schema";
+import { loadOrCreateAccount, loadOrCreatePlatform } from "./factory";
 
-export function handleApproval(event: Approval): void {
-  // Entities can be loaded from the store using a string ID; this ID
-  // needs to be unique across all entities of the same type
-  let entity = ExampleEntity.load(event.transaction.from.toHex())
+const GENESIS_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-  // Entities only exist after they have been saved to the store;
-  // `null` checks allow to create entities on demand
-  if (entity == null) {
-    entity = new ExampleEntity(event.transaction.from.toHex())
-
-    // Entity fields can be set using simple assignments
-    entity.count = BigInt.fromI32(0)
-  }
-
-  // BigInt and BigDecimal math are supported
-  entity.count = entity.count + BigInt.fromI32(1)
-
-  // Entity fields can be set based on event parameters
-  entity.owner = event.params.owner
-  entity.approved = event.params.approved
-
-  // Entities can be written to the store with `.save()`
-  entity.save()
-
-  // Note: If a handler doesn't require existing field values, it is faster
-  // _not_ to load the entity from the store. Instead, create it fresh with
-  // `new Entity(...)`, set the fields that should be updated and save the
-  // entity back to the store. Fields that were not set or unset remain
-  // unchanged, allowing for partial updates to be applied.
-
-  // It is also possible to access smart contracts from mappings. For
-  // example, the contract that has emitted the event can be connected to
-  // with:
-  //
-  // let contract = Contract.bind(event.address)
-  //
-  // The following functions can then be called on this contract to access
-  // state variables and other data:
-  //
-  // - contract.artistSecondSalePercentage(...)
-  // - contract.balanceOf(...)
-  // - contract.buyPrices(...)
-  // - contract.expectedTokenSupply(...)
-  // - contract.getApproved(...)
-  // - contract.getControlToken(...)
-  // - contract.isApprovedForAll(...)
-  // - contract.name(...)
-  // - contract.ownerOf(...)
-  // - contract.pendingBids(...)
-  // - contract.permissionedControllers(...)
-  // - contract.platformAddress(...)
-  // - contract.platformFirstSalePercentage(...)
-  // - contract.platformSecondSalePercentage(...)
-  // - contract.supportsInterface(...)
-  // - contract.symbol(...)
-  // - contract.tokenByIndex(...)
-  // - contract.tokenDidHaveFirstSale(...)
-  // - contract.tokenOfOwnerByIndex(...)
-  // - contract.tokenURI(...)
-  // - contract.totalSupply(...)
-  // - contract.uniqueTokenCreators(...)
-  // - contract.whitelistedCreators(...)
-}
+export function handleApproval(event: Approval): void {}
 
 export function handleApprovalForAll(event: ApprovalForAll): void {}
 
-export function handleBidProposed(event: BidProposed): void {}
+export function handleBidProposed(event: BidProposed): void {
+  // TODO: Derive all bids from accounts and link to master/layer tokenId
+  let tokenId = event.params.tokenId.toString();
+  let master = Master.load(tokenId);
+
+  let id = event.transaction.hash.toHexString();
+  let bid = new BidLog(id);
+  bid.timestamp = event.block.timestamp;
+  bid.amountInWei = event.params.bidAmount;
+  bid.isWithdrawn = false;
+  bid.bidder = event.params.bidder;
+
+  if (master !== null) {
+    bid.master = tokenId;
+    bid.save();
+  } else {
+    bid.layer = tokenId;
+    bid.save();
+  }
+}
 
 export function handleBidWithdrawn(event: BidWithdrawn): void {}
 
-export function handleBuyPriceSet(event: BuyPriceSet): void {}
+export function handleBuyPriceSet(event: BuyPriceSet): void {
+  let id = event.params.tokenId.toString();
+  let master = Master.load(id);
 
-export function handleControlLeverUpdated(event: ControlLeverUpdated): void {}
+  if (master !== null) {
+    master.buyNowPriceInWei = event.params.price;
+    master.save();
+  } else {
+    let layer = Layer.load(id);
+    layer.buyNowPriceInWei = event.params.price;
+    layer.save();
+  }
+}
+
+export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
+  // TODO implement layer control mapping if needed
+}
 
 export function handlePlatformAddressUpdated(
   event: PlatformAddressUpdated
-): void {}
+): void {
+  let platform = loadOrCreatePlatform(event.address);
+  platform.address = event.params.platformAddress;
+  platform.lastModifiedTimestamp = event.block.timestamp;
+  platform.save();
+}
 
-export function handleRoyaltyAmountUpdated(event: RoyaltyAmountUpdated): void {}
+export function handleRoyaltyAmountUpdated(event: RoyaltyAmountUpdated): void {
+  let platform = loadOrCreatePlatform(event.address);
+  platform.platformFirstSalePercentage = event.params.platformFirstPercentage;
+  platform.platformSecondSalePercentage = event.params.platformSecondPercentage;
+  platform.artistSecondSalePercentage = event.params.artistSecondPercentage;
+  platform.lastModifiedTimestamp = event.block.timestamp;
+  platform.save();
+}
 
-export function handleTokenSale(event: TokenSale): void {}
+export function handleMintArtwork(call: MintArtworkCall): void {
+  let masterId = call.inputs.artworkTokenId.toString();
+  let master = new Master(masterId);
 
-export function handleTransfer(event: Transfer): void {}
+  let layerCount = call.inputs.controlTokenArtists.length;
+
+  let startId = call.inputs.artworkTokenId;
+
+  let i = 0;
+  let incrementor = BigInt.fromI32(1);
+  while (i < layerCount) {
+    let layerId = startId.plus(incrementor).toString();
+    let layer = new Layer(layerId);
+
+    layer.owner = call.from;
+    layer.creators = [call.from];
+    layer.pastOwners = [call.from];
+    layer.master = masterId;
+    layer.save();
+    incrementor = incrementor.plus(BigInt.fromI32(1));
+    i++;
+  }
+  master.uri = call.inputs.artworkTokenURI.toString();
+  master.creators = [call.from];
+  master.uri = call.inputs.artworkTokenURI;
+  master.owner = call.from;
+  master.pastOwners = [call.from];
+  master.layerCount = layerCount;
+  master.save();
+}
+
+export function handleSetupControlToken(call: SetupControlTokenCall): void {
+  let layerId = call.inputs.controlTokenId.toString();
+  let layer = Layer.load(layerId);
+
+  let numLevers = call.inputs.leverStartValues.length;
+
+  let i = 0;
+  while (i < numLevers) {
+    let leverId = "layer-" + layerId + "-" + i.toString();
+    let lever = new Lever(leverId);
+    lever.minValue = call.inputs.leverMinValues.pop().toI32();
+    lever.maxValue = call.inputs.leverMaxValues.pop().toI32();
+    lever.currentValue = call.inputs.leverStartValues.pop().toI32();
+    lever.layer = layerId;
+    lever.save();
+    i++;
+  }
+
+  layer.uri = call.inputs.controlTokenURI.toString();
+  layer.numLevers = call.inputs.leverStartValues.length;
+  layer.save();
+}
+
+export function handleTokenSale(event: TokenSale): void {
+  let tokenId = event.params.tokenId.toString();
+  let master = Master.load(tokenId);
+
+  let transferLog = new TransferLog(event.transaction.hash.toHexString());
+  transferLog.timestamp = event.block.timestamp;
+  transferLog.from = event.transaction.from as Bytes;
+  transferLog.to = event.transaction.to as Bytes;
+  transferLog.tokenId = tokenId.toString();
+
+  if (master !== null) {
+    transferLog.master = tokenId;
+    transferLog.save();
+  } else {
+    transferLog.layer = tokenId;
+    transferLog.save();
+  }
+}
+
+export function handleTransfer(event: Transfer): void {
+  let tokenId = event.params.tokenId.toString();
+  let master = Master.load(tokenId);
+
+  let transferLog = new TransferLog(event.transaction.hash.toHexString());
+  transferLog.timestamp = event.block.timestamp;
+  transferLog.from = event.transaction.from as Bytes;
+  transferLog.to = event.transaction.to as Bytes;
+  transferLog.tokenId = tokenId.toString();
+
+  if (master !== null) {
+    transferLog.master = tokenId;
+    transferLog.save();
+  } else {
+    transferLog.layer = tokenId;
+    transferLog.save();
+  }
+}
