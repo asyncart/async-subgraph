@@ -1,16 +1,14 @@
 specVersion: 0.0.2
 schema:
-  file: ./schema.graphql
+  file: schema.graphql
 dataSources:
   - kind: ethereum/contract
     name: Contract
     network: mainnet
     source:
       abi: Contract
-      address: "0x6c424C25e9F1ffF9642cB5B7750b0Db7312c29ad" # mainnet
-      # address: "0x8e18B2a411a086aD41AD68953c9fE47B11914335" # rinkeby
-      startBlock: 9555952 # mainnet
-      # startBlock: 6350956	# rinkeby
+      address: "0x6c424C25e9F1ffF9642cB5B7750b0Db7312c29ad"
+      startBlock: 9555952
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.4
@@ -28,31 +26,21 @@ dataSources:
         - Transfer
       abis:
         - name: Contract
-          file: ./abis/Contract.json
-      callHandlers: 
+          file: Contract/abis/Contract.json
+      callHandlers:
         - function: mintArtwork(uint256,string,address[])
           handler: handleMintArtwork
         - function: setupControlToken(uint256,string,int256[],int256[],int256[],address[])
           handler: handleSetupControlToken
       eventHandlers:
-      # - event: Approval(indexed address,indexed address,indexed uint256)
-      #   handler: handleApproval
-      # - event: ApprovalForAll(indexed address,indexed address,bool)
-      #   handler: handleApprovalForAll
         - event: BidProposed(uint256,uint256,address)
           handler: handleBidProposed
-      # - event: BidWithdrawn(uint256)
-      #   handler: handleBidWithdrawn
-      # - event: BuyPriceSet(uint256,uint256)
-      #   handler: handleBuyPriceSet
         - event: ControlLeverUpdated(uint256,uint256,uint256[],int256[],int256[])
           handler: handleControlLeverUpdated
         - event: PlatformAddressUpdated(address)
           handler: handlePlatformAddressUpdated
-      # - event: RoyaltyAmountUpdated(uint256,uint256,uint256)
-      #   handler: handleRoyaltyAmountUpdated
         - event: TokenSale(uint256,uint256,address)
           handler: handleTokenSale
         - event: Transfer(indexed address,indexed address,indexed uint256)
           handler: handleTransfer
-      file: ./src/mapping.ts
+      file: Contract/Contract.wasm
