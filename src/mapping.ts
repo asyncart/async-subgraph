@@ -1,4 +1,4 @@
-import { BigInt } from "@graphprotocol/graph-ts"
+import { BigInt, log, Bytes } from "@graphprotocol/graph-ts";
 import {
   Contract,
   Approval,
@@ -10,90 +10,311 @@ import {
   PlatformAddressUpdated,
   RoyaltyAmountUpdated,
   TokenSale,
-  Transfer
-} from "../generated/Contract/Contract"
-import { ExampleEntity } from "../generated/schema"
+  Transfer,
+  MintArtworkCall,
+  SetupControlTokenCall,
+} from "../generated/Contract/Contract";
+import {
+  Platform,
+  Account,
+  SaleLog,
+  BidLog,
+  TransferLog,
+  Master,
+  Layer,
+  Lever,
+} from "../generated/schema";
+import { loadOrCreatePlatform } from "./factory";
 
-export function handleApproval(event: Approval): void {
-  // Entities can be loaded from the store using a string ID; this ID
-  // needs to be unique across all entities of the same type
-  let entity = ExampleEntity.load(event.transaction.from.toHex())
-
-  // Entities only exist after they have been saved to the store;
-  // `null` checks allow to create entities on demand
-  if (entity == null) {
-    entity = new ExampleEntity(event.transaction.from.toHex())
-
-    // Entity fields can be set using simple assignments
-    entity.count = BigInt.fromI32(0)
-  }
-
-  // BigInt and BigDecimal math are supported
-  entity.count = entity.count + BigInt.fromI32(1)
-
-  // Entity fields can be set based on event parameters
-  entity.owner = event.params.owner
-  entity.approved = event.params.approved
-
-  // Entities can be written to the store with `.save()`
-  entity.save()
-
-  // Note: If a handler doesn't require existing field values, it is faster
-  // _not_ to load the entity from the store. Instead, create it fresh with
-  // `new Entity(...)`, set the fields that should be updated and save the
-  // entity back to the store. Fields that were not set or unset remain
-  // unchanged, allowing for partial updates to be applied.
-
-  // It is also possible to access smart contracts from mappings. For
-  // example, the contract that has emitted the event can be connected to
-  // with:
-  //
-  // let contract = Contract.bind(event.address)
-  //
-  // The following functions can then be called on this contract to access
-  // state variables and other data:
-  //
-  // - contract.artistSecondSalePercentage(...)
-  // - contract.balanceOf(...)
-  // - contract.buyPrices(...)
-  // - contract.expectedTokenSupply(...)
-  // - contract.getApproved(...)
-  // - contract.getControlToken(...)
-  // - contract.isApprovedForAll(...)
-  // - contract.name(...)
-  // - contract.ownerOf(...)
-  // - contract.pendingBids(...)
-  // - contract.permissionedControllers(...)
-  // - contract.platformAddress(...)
-  // - contract.platformFirstSalePercentage(...)
-  // - contract.platformSecondSalePercentage(...)
-  // - contract.supportsInterface(...)
-  // - contract.symbol(...)
-  // - contract.tokenByIndex(...)
-  // - contract.tokenDidHaveFirstSale(...)
-  // - contract.tokenOfOwnerByIndex(...)
-  // - contract.tokenURI(...)
-  // - contract.totalSupply(...)
-  // - contract.uniqueTokenCreators(...)
-  // - contract.whitelistedCreators(...)
-}
+export function handleApproval(event: Approval): void {}
 
 export function handleApprovalForAll(event: ApprovalForAll): void {}
 
-export function handleBidProposed(event: BidProposed): void {}
+export function handleBidProposed(event: BidProposed): void {
+  let tokenId = event.params.tokenId.toString();
+  let master = Master.load(tokenId);
 
-export function handleBidWithdrawn(event: BidWithdrawn): void {}
+  let account = Account.load(event.params.bidder.toHexString());
 
-export function handleBuyPriceSet(event: BuyPriceSet): void {}
+  let i = 0;
+  let bidId = "";
+  let incrementBidId = true;
+  while (incrementBidId == true) {
+    let existingBidFromBidder = BidLog.load(
+      event.params.bidder.toHexString() +
+        "-" +
+        event.params.tokenId.toString() +
+        "-" +
+        i.toString()
+    );
+    if (existingBidFromBidder == null) {
+      bidId =
+        event.params.bidder.toHexString() +
+        "-" +
+        event.params.tokenId.toString() +
+        "-" +
+        i.toString();
+      incrementBidId = false;
+    } else {
+      i++;
+    }
+  }
 
-export function handleControlLeverUpdated(event: ControlLeverUpdated): void {}
+  let bid = new BidLog(bidId);
+  bid.timestamp = event.block.timestamp;
+  bid.isWithdrawn = false;
+  bid.wasSale = false;
+  bid.amountInWei = event.params.bidAmount;
+
+  if (account == null) {
+    account = new Account(event.params.bidder.toHexString());
+    account.isArtist = false;
+    account.save();
+  }
+
+  bid.bidder = event.params.bidder.toHexString();
+
+  if (master !== null) {
+    bid.master = tokenId;
+    bid.save();
+
+    master.pastBids.push(bidId);
+    if (master.highBid == null) {
+      master.highBid = bidId;
+    } else {
+      let currentHighBidLog = BidLog.load(master.highBid);
+      if (currentHighBidLog.amountInWei < bid.amountInWei) {
+        master.highBid = bidId;
+      }
+    }
+    master.save();
+  } else {
+    bid.layer = tokenId;
+    bid.save();
+
+    let layer = Layer.load(tokenId);
+    layer.pastBids.push(bidId);
+
+    if (layer.highBid == null) {
+      layer.highBid = bidId;
+    } else {
+      let currentHighBidLog = BidLog.load(layer.highBid);
+      if (currentHighBidLog.amountInWei < bid.amountInWei) {
+        layer.highBid = bidId;
+      }
+    }
+    layer.save();
+  }
+}
+
+export function handleBidWithdrawn(event: BidWithdrawn): void {
+  let i = 0;
+  let incrementBidId = true;
+  while (incrementBidId == true) {
+    let existingBidFromBidder = BidLog.load(
+      event.transaction.from.toHexString() +
+        "-" +
+        event.params.tokenId.toString() +
+        "-" +
+        i.toString()
+    );
+    if (existingBidFromBidder.isWithdrawn == false) {
+      existingBidFromBidder.isWithdrawn = true;
+      existingBidFromBidder.save();
+      incrementBidId = false;
+    } else {
+      i++;
+    }
+  }
+}
+
+export function handleBuyPriceSet(event: BuyPriceSet): void {
+  let id = event.params.tokenId.toString();
+  let master = Master.load(id);
+
+  if (master !== null) {
+    master.buyNowPriceInWei = event.params.price;
+    master.save();
+  } else {
+    let layer = Layer.load(id);
+    layer.buyNowPriceInWei = event.params.price;
+    layer.save();
+  }
+}
+
+export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
+  let tokenId = event.params.tokenId.toString();
+  let layer = Layer.load(tokenId);
+  let master = Master.load(layer.master);
+
+  let numUpdatedIds = event.params.leverIds.length;
+  let i = 0;
+  while (i < numUpdatedIds) {
+    let lever = Lever.load(
+      "layer-" + tokenId + "-" + event.params.leverIds.pop().toString()
+    );
+    if (lever !== null) {
+      lever.currentValue = event.params.updatedValues.pop().toI32();
+      lever.save();
+    } else {
+      log.log(log.Level.DEBUG, "Cannot update null lever id");
+    }
+    i++;
+  }
+  let updateId =
+    event.transaction.hash.toHexString() +
+    "-" +
+    event.block.timestamp.toString();
+
+  layer.lastUpdate = updateId;
+  master.lastUpdate = updateId;
+
+  layer.numUpdates = layer.numUpdates + 1;
+  master.numUpdates = master.numUpdates + 1;
+
+  master.save();
+  layer.save();
+}
 
 export function handlePlatformAddressUpdated(
   event: PlatformAddressUpdated
-): void {}
+): void {
+  let platform = loadOrCreatePlatform(event.address);
+  platform.address = event.params.platformAddress;
+  platform.lastModifiedTimestamp = event.block.timestamp;
+  platform.save();
+}
 
-export function handleRoyaltyAmountUpdated(event: RoyaltyAmountUpdated): void {}
+export function handleRoyaltyAmountUpdated(event: RoyaltyAmountUpdated): void {
+  let platform = loadOrCreatePlatform(event.address);
+  platform.platformFirstSalePercentage = event.params.platformFirstPercentage;
+  platform.platformSecondSalePercentage = event.params.platformSecondPercentage;
+  platform.artistSecondSalePercentage = event.params.artistSecondPercentage;
+  platform.lastModifiedTimestamp = event.block.timestamp;
+  platform.save();
+}
 
-export function handleTokenSale(event: TokenSale): void {}
+export function handleMintArtwork(call: MintArtworkCall): void {
+  let masterId = call.inputs.artworkTokenId.toString();
+  let master = new Master(masterId);
 
-export function handleTransfer(event: Transfer): void {}
+  let account = Account.load(call.from.toHexString());
+
+  if (account == null) {
+    account = new Account(call.from.toHexString());
+  }
+
+  account.isArtist = true;
+  account.save();
+
+  let layerCount = call.inputs.controlTokenArtists.length;
+
+  let startId = call.inputs.artworkTokenId;
+
+  let i = 0;
+  let incrementor = BigInt.fromI32(1);
+  while (i < layerCount) {
+    let layerId = startId.plus(incrementor).toString();
+    let layer = new Layer(layerId);
+
+    layer.owner = call.from.toHexString();
+    layer.creators = [call.from.toHexString()];
+    layer.pastOwners = [call.from.toHexString()];
+    layer.master = masterId;
+    layer.numUpdates = 0;
+    layer.save();
+    incrementor = incrementor.plus(BigInt.fromI32(1));
+    i++;
+  }
+  master.uri = call.inputs.artworkTokenURI.toString();
+  master.creators = [call.from.toHexString()];
+  master.uri = call.inputs.artworkTokenURI;
+  master.owner = call.from.toHexString();
+  master.numUpdates = 0;
+  master.pastOwners = [call.from.toHexString()];
+  master.layerCount = layerCount;
+  master.save();
+}
+
+export function handleSetupControlToken(call: SetupControlTokenCall): void {
+  let layerId = call.inputs.controlTokenId.toString();
+  let layer = Layer.load(layerId);
+
+  let numLevers = call.inputs.leverStartValues.length;
+
+  let i = 0;
+  while (i < numLevers) {
+    let leverId = "layer-" + layerId + "-" + i.toString();
+    let lever = new Lever(leverId);
+    lever.minValue = call.inputs.leverMinValues.pop().toI32();
+    lever.maxValue = call.inputs.leverMaxValues.pop().toI32();
+    lever.currentValue = call.inputs.leverStartValues.pop().toI32();
+    lever.layer = layerId;
+    lever.save();
+    i++;
+  }
+
+  layer.uri = call.inputs.controlTokenURI.toString();
+  layer.numLevers = call.inputs.leverStartValues.length;
+  layer.save();
+}
+
+export function handleTokenSale(event: TokenSale): void {
+  let tokenId = event.params.tokenId.toString();
+  let master = Master.load(tokenId);
+
+  let saleLog = new SaleLog(event.transaction.hash.toHexString());
+  saleLog.timestamp = event.block.timestamp;
+  saleLog.seller = event.transaction.from.toHexString();
+  saleLog.buyer = event.transaction.to.toHexString();
+  saleLog.tokenId = tokenId.toString();
+
+  if (master !== null) {
+    let acceptedBid = BidLog.load(master.highBid);
+    saleLog.amountInWei = acceptedBid.amountInWei;
+    saleLog.master = tokenId;
+    saleLog.save();
+    master.highBid = null;
+    master.lastSale = event.transaction.hash.toHexString();
+    master.save();
+  } else {
+    let layer = Layer.load(tokenId);
+    let acceptedBid = BidLog.load(layer.highBid);
+    saleLog.amountInWei = acceptedBid.amountInWei;
+    saleLog.layer = tokenId;
+    saleLog.save();
+    layer.highBid = null;
+    layer.lastSale = event.transaction.hash.toHexString();
+    layer.save();
+  }
+}
+
+export function handleTransfer(event: Transfer): void {
+  let tokenId = event.params.tokenId.toString();
+  let master = Master.load(tokenId);
+
+  let toAccount = Account.load(event.params.to.toHexString());
+  let fromAccount = Account.load(event.params.from.toHexString());
+
+  if (toAccount == null) {
+    toAccount = new Account(event.params.to.toHexString());
+  }
+
+  if (fromAccount == null) {
+    fromAccount = new Account(event.params.from.toHexString());
+  }
+
+  let transferLog = new TransferLog(event.transaction.hash.toHexString());
+  transferLog.timestamp = event.block.timestamp;
+  transferLog.from = event.transaction.from.toHexString();
+  transferLog.to = event.transaction.to.toHexString();
+  transferLog.tokenId = tokenId.toString();
+
+  if (master !== null) {
+    transferLog.master = tokenId;
+    transferLog.save();
+  } else {
+    transferLog.layer = tokenId;
+    transferLog.save();
+  }
+}
