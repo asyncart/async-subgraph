@@ -1,4 +1,4 @@
-import { BigInt, log, Bytes } from "@graphprotocol/graph-ts";
+import { BigInt, log } from "@graphprotocol/graph-ts";
 import {
   Contract,
   Approval,
@@ -13,6 +13,7 @@ import {
   Transfer,
   MintArtworkCall,
   SetupControlTokenCall,
+  UseControlTokenCall,
 } from "../generated/Contract/Contract";
 import {
   Platform,
@@ -20,6 +21,7 @@ import {
   SaleLog,
   BidLog,
   TransferLog,
+  LayerUpdate,
   Master,
   Layer,
   Lever,
@@ -140,6 +142,44 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
     layer.buyNowPriceInWei = event.params.price;
     layer.save();
   }
+}
+
+export function handleUseControlToken(call: UseControlTokenCall): void {
+  let tokenId = call.inputs.controlTokenId.toString();
+  let layer = Layer.load(tokenId);
+
+  let layerUpdateCost = call.transaction.gasPrice.times(
+    call.transaction.gasUsed
+  );
+
+  let layerUpdate = new LayerUpdate(call.transaction.hash.toHexString());
+  layerUpdate.gasPrice = call.transaction.gasPrice;
+  layerUpdate.gasUsed = call.transaction.gasUsed;
+  layerUpdate.layer = layer.id;
+  layerUpdate.costInWei = layerUpdateCost;
+  layerUpdate.save();
+
+  if (layer.averageUpdateCost.toString() == "0") {
+    layer.averageUpdateCost = layerUpdateCost;
+  } else {
+    let allUpdateCosts = layer.allUpdates;
+    // TODO: Fix bug where all updates cant be read
+    let i = 0;
+    let totalUpdateCost = BigInt.fromI32(0);
+    while (i < allUpdateCosts.length) {
+      let currentUpdate = LayerUpdate.load(allUpdateCosts.pop());
+      totalUpdateCost = totalUpdateCost.plus(currentUpdate.costInWei);
+      i++;
+    }
+    totalUpdateCost = totalUpdateCost.plus(layerUpdateCost);
+
+    let averageUpdateCost = totalUpdateCost.div(
+      BigInt.fromI32(allUpdateCosts.length + 1)
+    );
+    layer.averageUpdateCost = averageUpdateCost;
+  }
+
+  layer.save();
 }
 
 export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
