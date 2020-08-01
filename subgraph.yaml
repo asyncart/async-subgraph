@@ -34,6 +34,8 @@ dataSources:
           handler: handleMintArtwork
         - function: setupControlToken(uint256,string,int256[],int256[],int256[],address[])
           handler: handleSetupControlToken
+        - function: useControlToken(uint256,uint256[],int256[])
+          handler: handleUseControlToken
       eventHandlers:
       # - event: Approval(indexed address,indexed address,indexed uint256)
       #   handler: handleApproval

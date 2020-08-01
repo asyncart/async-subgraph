@@ -47,12 +47,26 @@ type Layer @entity {
   pastBids: [BidLog!] @derivedFrom(field: "layer")
   lastUpdate: String # format `txHash-timestamp`
   numUpdates: Int!
+  allUpdates: [LayerUpdate!] @derivedFrom(field: "layer")
+  averageUpdateCost: BigInt # Average (gasPrice * gasUsed) for each associated `LayerUpdate` in wei
   lastSale: SaleLog
   pastSales: [SaleLog!] @derivedFrom(field: "layer")
   lastTransfer: TransferLog @derivedFrom(field: "layer")
   pastTransfers: [TransferLog!] @derivedFrom(field: "layer")
   buyNowPriceInWei: BigInt
   master: Master 
+}
+
+# TYPE @LayerUpdate
+# A transaction that updates some arbitrary number of `Levers` on a `Layer` 
+# Lives on a `Layer`
+# Contains transaction metadata for `Layer` updates
+type LayerUpdate @entity {
+  id: ID! # tx hash of `LayerUpdate` transaction
+  gasPrice: BigInt!
+  gasUsed: BigInt!
+  costInWei: BigInt!
+  layer: Layer
 }
 
 # TYPE @Lever
@@ -66,6 +80,7 @@ type Lever @entity {
   currentValue: Int!
   layer: Layer
 }
+
 
 type Account @entity {
   id: ID! # eth address of owner as `HexString`
