@@ -8,24 +8,21 @@ dataSources:
     source:
       abi: Contract
       address: "0x6c424C25e9F1ffF9642cB5B7750b0Db7312c29ad" # mainnet
-      # address: "0x8e18B2a411a086aD41AD68953c9fE47B11914335" # rinkeby
       startBlock: 9555952 # mainnet
-      # startBlock: 6350956	# rinkeby
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.4
       language: wasm/assemblyscript
       entities:
-        - Approval
-        - ApprovalForAll
-        - BidProposed
-        - BidWithdrawn
-        - BuyPriceSet
-        - ControlLeverUpdated
-        - PlatformAddressUpdated
-        - RoyaltyAmountUpdated
-        - TokenSale
-        - Transfer
+        - Platform
+        - Master
+        - Layer
+        - LayerUpdate
+        - Lever
+        - Account
+        - SaleLog
+        - BidLog
+        - TransferLog
       abis:
         - name: Contract
           file: ./abis/Contract.json
@@ -57,4 +54,77 @@ dataSources:
           handler: handleTokenSale
         - event: Transfer(indexed address,indexed address,indexed uint256)
           handler: handleTransfer
+      file: ./src/mapping.ts
+  - kind: ethereum/contract
+    name: V2Contract 
+    network: mainnet
+    source:
+      abi: V2Contract 
+      address: "0xb6dAe651468E9593E4581705a09c10A76AC1e0c8" # mainnet
+      startBlock: 9555952 # mainnet
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - Platform
+        - Master
+        - Layer
+        - LayerUpdate
+        - Lever
+        - Account
+        - SaleLog
+        - BidLog
+        - TransferLog
+      abis:
+        - name: V2Contract
+          file: ./abis/V2Contract.json
+      callHandlers: 
+        - function: mintArtwork(uint256,string,address[])
+          handler: handleMintArtwork
+        - function: setupControlToken(uint256,string,int256[],int256[],int256[],int256,address[])
+          handler: handleSetupControlToken
+        - function: useControlToken(uint256,uint256[],int256[])
+          handler: handleUseControlToken
+      eventHandlers:
+      # - event: Approval(indexed address,indexed address,indexed uint256)
+      #   handler: handleApproval
+      # - event: ApprovalForAll(indexed address,indexed address,bool)
+      #   handler: handleApprovalForAll
+        - event: BidProposed(uint256,uint256,address)
+          handler: handleBidProposed
+      # - event: BidWithdrawn(uint256)
+      #   handler: handleBidWithdrawn
+        - event: BuyPriceSet(uint256,uint256)
+          handler: handleBuyPriceSet
+        - event: ControlLeverUpdated(uint256,uint256,int256,uint256[],int256[],int256[])
+          handler: handleControlLeverUpdated
+        - event: PlatformAddressUpdated(address)
+          handler: handlePlatformAddressUpdated
+      # - event: RoyaltyAmountUpdated(uint256,uint256,uint256)
+      #   handler: handleRoyaltyAmountUpdated
+        - event: TokenSale(uint256,uint256,address)
+          handler: handleTokenSale
+        - event: Transfer(indexed address,indexed address,indexed uint256)
+          handler: handleTransfer
+      file: ./src/mapping.ts
+  - kind: ethereum/contract
+    name: V1Upgrader 
+    network: mainnet
+    source:
+      abi: V1Upgrader 
+      address: "0xf488040dbd65E5Bd222085eEE03B111c50ec46c4" # mainnet
+      startBlock: 9555952 # mainnet
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TokenUpgraded
+      abis:
+        - name: V1Upgrader 
+          file: ./abis/V1Upgrader.json
+      eventHandlers:
+        - event: TokenUpgraded(uint256,address,address)
+          handler: handleTokenUpgraded
       file: ./src/mapping.ts

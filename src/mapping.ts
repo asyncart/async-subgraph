@@ -26,6 +26,9 @@ import {
   Layer,
   Lever,
 } from "../generated/schema";
+import {
+  TokenUpgraded
+} from "../generated/V1Upgrader/V1Upgrader"
 import { loadOrCreatePlatform } from "./factory";
 
 export function handleApproval(event: Approval): void {}
@@ -75,7 +78,6 @@ export function handleBidProposed(event: BidProposed): void {
   }
 
   bid.bidder = event.params.bidder.toHexString();
-
   if (master !== null) {
     bid.master = tokenId;
     bid.save();
@@ -187,14 +189,16 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   let layer = Layer.load(tokenId);
   let master = Master.load(layer.master);
 
+
   let numUpdatedIds = event.params.leverIds.length;
+  log.debug("Num updated ids {}", [numUpdatedIds.toString()]) ;
   let i = 0;
   while (i < numUpdatedIds) {
     let lever = Lever.load(
       "layer-" + tokenId + "-" + event.params.leverIds.pop().toString()
     );
     if (lever !== null) {
-      lever.currentValue = event.params.updatedValues.pop().toI32();
+      lever.currentValue = event.params.updatedValues.pop();
       lever.save();
     } else {
       log.log(log.Level.DEBUG, "Cannot update null lever id");
@@ -248,8 +252,11 @@ export function handleMintArtwork(call: MintArtworkCall): void {
   account.save();
 
   let layerCount = call.inputs.controlTokenArtists.length;
+  log.debug("Layer count {}", [layerCount.toString()])
 
   let startId = call.inputs.artworkTokenId;
+
+  log.debug("Start ID {}", [startId.toString()])
 
   let i = 0;
   let incrementor = BigInt.fromI32(1);
@@ -282,16 +289,20 @@ export function handleSetupControlToken(call: SetupControlTokenCall): void {
 
   let numLevers = call.inputs.leverStartValues.length;
 
+  log.debug("numLevers {}", [numLevers.toString()])
+
   let i = 0;
   while (i < numLevers) {
+    log.debug("Start of loop {}", [i.toString()])
     let leverId = "layer-" + layerId + "-" + i.toString();
     let lever = new Lever(leverId);
-    lever.minValue = call.inputs.leverMinValues.pop().toI32();
-    lever.maxValue = call.inputs.leverMaxValues.pop().toI32();
-    lever.currentValue = call.inputs.leverStartValues.pop().toI32();
+    lever.minValue = call.inputs.leverMinValues.pop();
+    lever.maxValue = call.inputs.leverMaxValues.pop();
+    lever.currentValue = call.inputs.leverStartValues.pop();
     lever.layer = layerId;
     lever.save();
     i++;
+    log.debug("End of loop {}", [i.toString()])
   }
 
   layer.uri = call.inputs.controlTokenURI.toString();
@@ -357,4 +368,8 @@ export function handleTransfer(event: Transfer): void {
     transferLog.layer = tokenId;
     transferLog.save();
   }
+}
+
+export function handleTokenUpgraded(event: TokenUpgraded): void {
+
 }

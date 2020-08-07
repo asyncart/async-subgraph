@@ -75,9 +75,9 @@ type LayerUpdate @entity {
 # Contains a list of values which map to `Layer` states
 type Lever @entity {
   id: ID! # unique `tokenId` + lever index ? TODO
-  minValue: Int!
-  maxValue: Int!
-  currentValue: Int!
+  minValue: BigInt!
+  maxValue: BigInt!
+  currentValue: BigInt!
   layer: Layer
 }
 
@@ -123,4 +123,9 @@ type TransferLog @entity {
   to: Account!
   master: Master
   layer: Layer
+}
+
+type TokenUpgraded @entity {
+  id: ID!
+  timestamp: BigInt!
 }
